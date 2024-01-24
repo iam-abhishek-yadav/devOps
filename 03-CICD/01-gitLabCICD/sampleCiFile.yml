@@ -1,0 +1,46 @@
+# Define variables for image name and tag
+variables:
+  IMAGE_NAME: abhishekr1/demo-app      # Name of the Docker image repository
+  IMAGE_TAG: python-app-1.0            # Tag for versioning the Docker image
+
+# Define stages in the CI/CD pipeline
+stages:
+  - test                             # Stage for running tests
+  - build                            # Stage for building the Docker image
+  - deploy                           # Stage for deploying the application
+
+# Define a job to run tests
+run_tests:
+  stage: test
+  image: python:3.9-slim-buster       # Base image for running tests
+  before_script:
+    - apt-get update && apt-get install make
+  script:
+    - make test                       # Run tests using the 'make test' command
+
+# Define a job to build the Docker image
+build_image:
+  stage: build
+  image: docker:20.10.16              # Docker image for building the application
+  services:
+    - docker:20.10.16-dind            # Docker-in-Docker service for building images
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"       # Set Docker TLS certificate directory
+  before_script:
+    - docker login -u $REGISTRY_USER -p $REGISTRY_PASS   # Login to Docker registry
+  script:
+    - docker build -t $IMAGE_NAME:$IMAGE_TAG .          # Build Docker image
+    - docker push $IMAGE_NAME:$IMAGE_TAG                 # Push Docker image to registry
+
+# Define a job to deploy the application
+deploy:
+  stage: deploy
+  before_script:
+    - chmod 400 $SSH_KEY               # Set permissions for SSH key
+  script:
+    - ssh -o StrictHostKeyChecking=no -i $SSH_KEY root@161.35.223.117 "
+        docker login -u $REGISTRY_USER -p $REGISTRY_PASS &&
+        docker ps -aq | xargs docker stop | xargs docker rm &&
+        docker run -d -p 5000:5000 $IMAGE_NAME:$IMAGE_TAG"
+                                        # SSH into the server and deploy the Docker container
+
